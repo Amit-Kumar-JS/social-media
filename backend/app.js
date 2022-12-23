@@ -1,5 +1,6 @@
 const express = require('express');
 const app = express();
+const cookieParser = require("cookie-parser")
 
 require('dotenv').config({path: "backend/config/config.env"})
 
@@ -7,6 +8,7 @@ require('dotenv').config({path: "backend/config/config.env"})
 
 app.use(express.json());
 app.use(express.urlencoded({extended:true}));
+app.use(cookieParser())
 
 //importing routes
 const post = require("./routes/Post")
