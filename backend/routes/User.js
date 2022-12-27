@@ -15,6 +15,7 @@ router.route("/me").get( isAuthenticated,myProfile)
 router.route("/delete/me").delete(isAuthenticated, deleteProfile)
 router.route("/user/:id").get(isAuthenticated, userProfile)
 router.route("/users").get(isAuthenticated, getAllUsers)
-router.route("/forgot/password").post(isAuthenticated , forgotPassword)
+router.route("/password/reset/:token").put(updatePassword)
+router.route("/forgot/password").post( forgotPassword)
 
 module.exports = router
