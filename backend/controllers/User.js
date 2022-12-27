@@ -1,5 +1,8 @@
+const Post = require("../models/Post");
 const User = require("../models/User");
-const matchPassword = require("../models/User")
+const {sendEmail} = require('../middlewares/sendEmail')
+const matchPassword = require("../models/User");
+const getResetPasswordToken = require("../models/User");
 
 exports.register = async (req, res) => {
   try {
@@ -76,17 +79,20 @@ exports.login = async (req, res) => {
 
 exports.logout = async (req, res) => {
   try {
-    res.status(200).cookie("token", null, { expires: new Date(Date.now()), httpOnly: true }).json({
-      success: true,
-      message: "Logged Out"
-    })
+    res
+      .status(200)
+      .cookie("token", null, { expires: new Date(Date.now()), httpOnly: true })
+      .json({
+        success: true,
+        message: "Logged Out",
+      });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: error.message,
-    })
+    });
   }
-}
+};
 
 exports.follow = async (req, res) => {
   try {
@@ -142,62 +148,201 @@ exports.updatePassword = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select("+password");
     const { oldPassword, newPassword } = req.body;
-    const isMatch = await user.matchPassword(oldPassword)
+    const isMatch = await user.matchPassword(oldPassword);
 
-
-    if(!oldPassword || !newPassword) {
+    if (!oldPassword || !newPassword) {
       return res.status(400).json({
-        success:false,
-        message:"Please provide old and new password",
-      })
+        success: false,
+        message: "Please provide old and new password",
+      });
     }
 
     if (!isMatch) {
       return res.status(400).json({
         success: false,
         message: "Incorrect Old Password",
-      })
+      });
     }
     user.password = newPassword;
     await user.save();
 
     res.status(200).json({
       success: true,
-      message: "Password Updated"
-    })
-
-
-
+      message: "Password Updated",
+    });
   } catch (error) {
     res.status(500).json({
-      success:false,
-      message:error.message,
-    })
+      success: false,
+      message: error.message,
+    });
   }
-}
+};
 
-exports.updateProfile = async (req,res)=>{
+exports.updateProfile = async (req, res) => {
   try {
-    
     const user = await User.findById(req.user._id);
-    const {name ,email} = req.body;
+    const { name, email } = req.body;
 
-    if(name){
+    if (name) {
       user.name = name;
-
     }
-    if(email){
+    if (email) {
       user.email = email;
     }
     await user.save();
     res.status(200).json({
-      success:true,
-      message:"Profile Updated"
-    })
+      success: true,
+      message: "Profile Updated",
+    });
   } catch (error) {
     res.status(500).json({
-      success:false,
-      message:error.message,
-    })
+      success: false,
+      message: error.message,
+    });
   }
-}
+};
+
+exports.deleteProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const posts = user.posts;
+    const followers = user.followers;
+    const userId = user._id;
+    await user.remove();
+
+    res.cookie("token", null, {
+      expires: new Date(Date.now()),
+      httpOnly: true,
+    });
+
+    for (let i = 0; i < posts.length; i++) {
+      const post = await Post.findById(posts[i]);
+
+      await post.remove();
+    }
+
+    for (let i = 0; i < followers.length; i++) {
+      const follower = await User.findById(followers[i]);
+
+      const index = follower.followers.indexOf(userId);
+      follower.followers.splice(index, 1);
+
+      await follower.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "user deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.myProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate("posts");
+
+    res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.userProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).populate("posts");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({});
+
+    res.status(200).json({
+      success: true,
+      users,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const resetPasswordToken = user.getResetPasswordToken();
+
+    await user.save();
+
+    const resetUrl = `${req.protocol}://${req.get(
+      "host"
+    )}/password/reset/${resetPasswordToken}`;
+
+    const message = `Reset your password by clicking on this link: ${resetUrl}`
+
+    try {
+      await sendEmail({
+        email: user.email,
+        subject:"Reset Password",
+        message,
+      })
+
+      res.status(200).json({
+        success:true,
+        message: `Email has been sent to ${user.email}`
+      })
+    } catch (error) {
+      user.resetPasswordExpire=undefined,
+      user.resetPasswordToken=undefined,
+
+      await user.save();
+
+      res.status(500).json({
+        success:false,
+        message:error.message,
+      })
+    }
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
