@@ -1,0 +1,7 @@
+body{
+
+  --lightestGrey:rgb(220,220,220);
+  --lightGrey:rgb(175,175,175);
+
+  background-color: var(--lightestGrey);
+}
